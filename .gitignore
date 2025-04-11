@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Project specific
+SimklBackup.json
+
+# Chrome WebDriver
+chromedriver*
+
+# Logs
+*.log
