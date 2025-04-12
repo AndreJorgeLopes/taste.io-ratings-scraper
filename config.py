@@ -1,10 +1,21 @@
-\"""Configuration settings for the taste.io scraper."""
+# Configuration settings for the taste.io scraper.
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # User settings
-USERNAME = "ciganoo"  # Your taste.io username
+USERNAME = os.getenv("TASTE_USERNAME")  # Your taste.io username
 
 # API settings
 BASE_URL = f"https://www.taste.io/api/users/{USERNAME}/ratings"
+
+# Simkl API settings
+# Get your client_id by creating a new app at https://simkl.com/settings/developer/
+# Note: The URI field can be just a dot (.)
+SIMKL_CLIENT_ID = os.getenv("SIMKL_CLIENT_ID")  # Your Simkl client ID
+SIMKL_SEARCH_URL = "https://api.simkl.com/search/id"
 
 # Anti-bot detection settings
 USER_AGENTS = [
@@ -39,15 +50,13 @@ COOKIE_DEFAULTS = {
 }
 
 # Delay settings (in seconds)
-MIN_DELAY = 1.5
-MAX_DELAY = 4.0
+MIN_DELAY = float(os.getenv("MIN_DELAY", 1.5))
+MAX_DELAY = float(os.getenv("MAX_DELAY", 4.0))
 
 # Browser settings
-HEADLESS_MODE = True
-PAGE_LOAD_TIMEOUT = 30
+HEADLESS_MODE = os.getenv("HEADLESS_MODE", "true").lower() == "true"
+PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", 30))
 
 # Output settings
-OUTPUT_FILE = "SimklBackup.json"
+OUTPUT_FILE = os.getenv("OUTPUT_FILE", "SimklBackup.json")
 JSON_INDENT = 2
-CSV_ENABLED = True  # Enable CSV output alongside JSON
-CSV_FIELDS = ["title", "rating", "rated_at", "year"]  # Fields to include in CSV output
