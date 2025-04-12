@@ -7,7 +7,7 @@ from collections import defaultdict
 from config import (
     OUTPUT_FILE, SIMKL_CLIENT_ID,
     SIMKL_IMPORT_ENDPOINT, SIMKL_ACCESS_TOKEN,
-    SIMKL_API_HEADERS
+    SIMKL_API_HEADERS, SIMKL_ADD_TO_LIST_ENDPOINT
 )
 from schemas import SimklBackup, MediaEntry
 
@@ -73,7 +73,8 @@ def group_by_rating(backup: SimklBackup) -> Dict[float, List[Dict[str, Any]]]:
     return rating_groups
 
 def send_ratings_to_simkl(rating_groups: Dict[float, List[Dict[str, Any]]]) -> None:
-    """Send ratings to Simkl API, one request per rating value."""
+    """Send ratings to Simkl API, one request per rating value.
+    Also sends each group to the add-to-list endpoint."""
     if not SIMKL_CLIENT_ID or not SIMKL_ACCESS_TOKEN:
         print("Error: SIMKL_CLIENT_ID or SIMKL_ACCESS_TOKEN not set. Please configure them in config.py")
         sys.exit(1)
@@ -87,20 +88,36 @@ def send_ratings_to_simkl(rating_groups: Dict[float, List[Dict[str, Any]]]) -> N
 
         print(f"Sending {len(items)} items with rating {rating}...")
 
-        # Prepare the endpoint with the rating query parameter
-        endpoint = f"{SIMKL_IMPORT_ENDPOINT}?rating={rating}"
-
+        # 1. Send to ratings endpoint with rating parameter
+        ratings_endpoint = f"{SIMKL_IMPORT_ENDPOINT}?rating={rating}"
         try:
             response = requests.post(
-                endpoint,
+                ratings_endpoint,
                 headers=headers,
                 json=items
             )
             response.raise_for_status()
-            print(f"Successfully sent {len(items)} items with rating {rating}")
+            print(f"Successfully sent {len(items)} items with rating {rating} to ratings endpoint")
             print(f"Response: {response.json()}")
         except requests.exceptions.RequestException as e:
-            print(f"Error sending items with rating {rating}: {e}")
+            print(f"Error sending items with rating {rating} to ratings endpoint: {e}")
+            if hasattr(e, 'response') and e.response:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response body: {e.response.text}")
+
+        # 2. Send to add-to-list endpoint without query parameters
+        try:
+            print(f"Adding {len(items)} items to the completed list...")
+            add_response = requests.post(
+                SIMKL_ADD_TO_LIST_ENDPOINT,
+                headers=headers,
+                json=items
+            )
+            add_response.raise_for_status()
+            print(f"Successfully added {len(items)} items to the completed list")
+            print(f"Response: {add_response.json()}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error adding items to the completed list: {e}")
             if hasattr(e, 'response') and e.response:
                 print(f"Response status: {e.response.status_code}")
                 print(f"Response body: {e.response.text}")
