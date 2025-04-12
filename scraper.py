@@ -58,56 +58,66 @@ def convert_ms_to_iso(ms: int | None) -> str | None:
     dt = datetime.datetime.fromtimestamp(ms / 1000.0, datetime.UTC)
     return dt.isoformat()
 
-def get_simkl_id(slug: str, category: str) -> int | None:
-    """Fetch Simkl ID from their API using the title slug."""
+def get_ids(title: str, year: int, category: str) -> int | None:
+    """Fetch Simkl ID from their API using the title title."""
     if not SIMKL_CLIENT_ID:
         print("Warning: SIMKL_CLIENT_ID not set. Please configure it in config.py")
         return None
 
     try:
         params = {
-            "title": slug,
+            "q": f"{title} {year}",
+            "page": 1,
+            "limit": 1,
             "client_id": SIMKL_CLIENT_ID
         }
-        response = requests.get(SIMKL_SEARCH_URL, params=params)
+
+        params_without_year = {
+            "q": title,
+            "page": 1,
+            "limit": 1,
+            "client_id": SIMKL_CLIENT_ID
+        }
+
+        final_search_url = f"{SIMKL_SEARCH_URL}/{category}"
+
+        response = requests.get(final_search_url, params=params)
         response.raise_for_status()
-        data = response.json()
+        item = response.json()[0] or requests.get(final_search_url, params=params_without_year).raise_for_status().json()[0]
 
-        # Find the matching item with the correct type
-        for item in data:
-            if item.get("type") == category and item.get("ids", {}).get("simkl"):
-                return item["ids"]["simkl"]
+        if item.get("ids", {}).get("simkl_id"):
+            return {
+                "simkl": item.get("ids", {}).get("simkl_id"),
+                "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+            }
 
-        print(f"Warning: No matching Simkl ID found for {slug}")
+        print(f"Warning: No matching Simkl ID found for {response.json()}")
         return None
 
     except Exception as e:
-        print(f"Error fetching Simkl ID for {slug}: {e}")
+        print(f"Error fetching Simkl ID for {title}: {e}")
         return None
 
 def process_item(item: TasteIOItem) -> MediaEntry:
     """Process a single item from taste.io and convert it to Simkl format."""
-    # Determine the rating value (convert from 5-star to 10-point scale)
-    star_rating = item.get("highlightRating")
-    if star_rating is not None:
-        rating_value = star_rating * 2
-    else:
-        user_rating = item.get("user", {}).get("rating")
-        rating_value = user_rating * 2 if user_rating is not None else None
-
-    # Convert timestamp if available
-    rated_at = convert_ms_to_iso(item["lastReaction"]) if "lastReaction" in item else None
+    # Determine the rating value (convert from 4-star to 10-point scale)
+    star_rating = item.get("highlightRating") or item.get("user", {}).get("rating")
+    rating_value = star_rating * 2.5
 
     # Get the Simkl ID from their API
-    category = "tv" if item.get("category") == "tv" else "movie"
-    simkl_id = get_simkl_id(item.get("slug", ""), category)
+    if item.get("category") == "movies":
+        category = "movie"
+    elif 'anime' in item.get("genre") or 'Animation' in item.get("genre"):
+        category = "anime"
+    else:
+        category = "tv"
+    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
 
     return MediaEntry(
         title=item.get("name", ""),
         rating=rating_value,
-        rated_at=rated_at,
         year=item.get("year", ""),
-        ids={"simkl": simkl_id or 0}  # Fallback to 0 if no ID found
+        ids=ids
     )
 
 def main():
