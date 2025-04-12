@@ -15,7 +15,16 @@ BASE_URL = f"https://www.taste.io/api/users/{USERNAME}/ratings"
 # Get your client_id by creating a new app at https://simkl.com/settings/developer/
 # Note: The URI field can be just a dot (.)
 SIMKL_CLIENT_ID = os.getenv("SIMKL_CLIENT_ID")  # Your Simkl client ID
-SIMKL_SEARCH_URL = "https://api.simkl.com/search/id"
+SIMKL_SEARCH_URL = "https://api.simkl.com/search"
+SIMKL_IMPORT_ENDPOINT = "https://api.simkl.com/sync/ratings"
+SIMKL_ACCESS_TOKEN = os.getenv("SIMKL_ACCESS_TOKEN")  # Your Simkl access token gotten by following the instructions at this link: https://simkl.docs.apiary.io/#reference/authentication-oauth-2.0/
+
+# Simkl API Headers
+SIMKL_API_HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {SIMKL_ACCESS_TOKEN}",
+    "simkl-api-key": SIMKL_CLIENT_ID
+}
 
 # Anti-bot detection settings
 USER_AGENTS = [
