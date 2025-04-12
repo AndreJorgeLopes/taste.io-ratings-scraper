@@ -85,7 +85,7 @@ Create a `.env` file based on `.env.example` and configure the following setting
    ```bash
    python scraper.py
    ```
-3. Run the import script:
+3. Try to import the json into the importer on their website manually or run the import script:
    ```bash
    python import_backup_into_simkl.py
    ```
