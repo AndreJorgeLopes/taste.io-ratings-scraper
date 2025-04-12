@@ -2,13 +2,21 @@
 
 A Python script that scrapes your ratings from taste.io and converts them into a Simkl-compatible format.
 
+# Note:
+
+This script only works for shown you watched in full, because the Simkl api doesn't support episode/season ratings and I
+couldn't manage to find a way to get the episode/season ratings to work on the json/csv imports. As a small side note,
+you can get that info from your taste.io account on the endpoint `https://www.taste.io/api/tv/{tvShow.slug}/episodes`
+with the field `items[i].user.tracked`
+
 ## Features
 
 - Scrapes all movie and TV show ratings from your taste.io profile
 - Converts ratings to Simkl format
 - Supports both movies and TV shows
 - Handles pagination automatically
-- Exports data to both JSON and CSV formats
+- Exports data to JSON format
+- Caches API responses for faster subsequent runs
 - Advanced anti-bot detection measures
   - Random user agent selection
   - Cookie management
@@ -46,29 +54,25 @@ A Python script that scrapes your ratings from taste.io and converts them into a
 
 ## Configuration
 
-Edit `config.py` to customize the scraper settings:
+Create a `.env` file based on `.env.example` and configure the following settings:
 
-- `USERNAME`: Your taste.io username
-- `HEADLESS_MODE`: Run Chrome in headless mode (default: True)
-- `MIN_DELAY`/`MAX_DELAY`: Random delay between requests to avoid rate limiting
-- `PAGE_LOAD_TIMEOUT`: Maximum time to wait for page load
-- `OUTPUT_FILE`: Name of the output file
-- `JSON_INDENT`: Number of spaces for JSON indentation
-- `CSV_ENABLED`: Enable CSV output alongside JSON
-- `CSV_FIELDS`: Fields to include in CSV output
-- `USER_AGENTS`: List of user agents to rotate through
-- `REQUEST_HEADERS`: Custom headers for requests
-- `COOKIE_DEFAULTS`: Default cookie values for authentication
+- `TASTE_USERNAME`: Your taste.io username
+- `SIMKL_CLIENT_ID`: Your Simkl API client ID (get it from https://simkl.com/settings/developer/)
+- `HEADLESS_MODE`: Run Chrome in headless mode (default: true)
+- `MIN_DELAY`/`MAX_DELAY`: Random delay between requests (default: 1.5/4.0)
+- `PAGE_LOAD_TIMEOUT`: Maximum time to wait for page load (default: 30)
+- `OUTPUT_FILE`: Name of the output file (default: SimklBackup.json)
 
 ## Usage
 
-1. Configure your taste.io username in `config.py`
+1. Configure your environment variables in `.env`
 2. Run the script:
    ```bash
    python scraper.py
    ```
 
-The script will create output files containing your ratings in the specified format(s).
+The script will create a JSON file containing your ratings in the Simkl backup format. Subsequent runs will use cached
+API responses when available.
 
 ## Output Formats
 
@@ -92,16 +96,6 @@ The JSON output file follows the Simkl backup format:
   "shows": [...]
 }
 ```
-
-### CSV Output
-
-When CSV export is enabled, the script creates a CSV file with the following fields:
-- title
-- rating
-- rated_at
-- year
-
-Both movies and TV shows are included in the same CSV file.
 
 ## License
 
