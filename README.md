@@ -1,6 +1,6 @@
 # Taste.io Ratings Scraper
 
-A Python script that scrapes your ratings from taste.io and converts them into a Simkl-compatible format.
+A Python library that scrapes your ratings from taste.io and converts them into a Simkl-compatible format.
 
 # Note:
 
@@ -8,6 +8,19 @@ This script only works for shown you watched in full, because the Simkl api does
 couldn't manage to find a way to get the episode/season ratings to work on the json/csv imports. As a small side note,
 you can get that info from your taste.io account on the endpoint `https://www.taste.io/api/tv/{tvShow.slug}/episodes`
 with the field `items[i].user.tracked`
+
+## Configuration
+
+Create a `.env` file based on `.env.example` and configure the following settings:
+
+- `TASTE_USERNAME`: Your taste.io username
+- `SIMKL_CLIENT_ID`: Your Simkl API client ID (get it from https://simkl.com/settings/developer/)
+- `SIMKL_ACCESS_TOKEN`: Your Simkl access token (Get it by following the instructions at this link:
+  https://simkl.docs.apiary.io/#reference/authentication-oauth-2.0/)
+- `HEADLESS_MODE`: Run Chrome in headless mode (default: true)
+- `MIN_DELAY`/`MAX_DELAY`: Random delay between requests (default: 1.5/4.0)
+- `PAGE_LOAD_TIMEOUT`: Maximum time to wait for page load (default: 30)
+- `OUTPUT_FILE`: Name of the output file (default: SimklBackup.json)
 
 ## Features
 
@@ -23,6 +36,8 @@ with the field `items[i].user.tracked`
   - Request headers customization
   - Automated ChromeDriver management
 - Configurable settings
+- Converts taste.io's 4-star rating system to Simkl's 10-point scale
+- Fetches Simkl IDs for each title
 
 ## Requirements
 
@@ -66,13 +81,20 @@ Create a `.env` file based on `.env.example` and configure the following setting
 ## Usage
 
 1. Configure your environment variables in `.env`
-2. Run the script:
+2. Run the scraper script:
    ```bash
    python scraper.py
    ```
+3. Run the import script:
+   ```bash
+   python import_backup_into_simkl.py
+   ```
 
-The script will create a JSON file containing your ratings in the Simkl backup format. Subsequent runs will use cached
-API responses when available.
+The scraper script will create a JSON file containing your ratings in the Simkl backup format. Subsequent runs will use
+cached API responses when available.
+
+The import script will import the ratings from the JSON file into your Simkl account by chunking them into ratings after
+sorting them.
 
 ## Output Formats
 
