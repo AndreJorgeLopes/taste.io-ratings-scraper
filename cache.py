@@ -2,9 +2,7 @@ import json
 import os
 import time
 from datetime import datetime, timedelta
-
-CACHE_FILE = "ratings_cache.json"
-CACHE_TIMEOUT_DAYS = 1
+from config import CACHE_FILE, CACHE_TIMEOUT_DAYS
 
 def load_cache():
     """Load cached items if they exist and are not expired."""

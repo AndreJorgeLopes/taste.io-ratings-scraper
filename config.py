@@ -60,3 +60,7 @@ PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", 30))
 # Output settings
 OUTPUT_FILE = os.getenv("OUTPUT_FILE", "SimklBackup.json")
 JSON_INDENT = 2
+
+# Cache settings
+CACHE_FILE = os.getenv("CACHE_FILE", "ratings_cache.json")
+CACHE_TIMEOUT_DAYS = int(os.getenv("CACHE_TIMEOUT_DAYS", 1))
