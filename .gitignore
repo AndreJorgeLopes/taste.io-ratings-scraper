@@ -16,8 +16,8 @@ env/
 
 # Project specific
 SimklBackup.json
-rating_cache.json
-rating_cache.csv
+ratings_cache.json
+ratings_cache.csv
 
 # Chrome WebDriver
 chromedriver*
