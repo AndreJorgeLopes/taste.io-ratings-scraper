@@ -8,8 +8,8 @@ class SimklID(TypedDict):
 class MediaEntry(TypedDict):
     title: str
     rating: Optional[float]
-    rated_at: Optional[str]
     year: Union[str, int]
+    to: str
     ids: SimklID
 
 class SimklBackup(TypedDict):
