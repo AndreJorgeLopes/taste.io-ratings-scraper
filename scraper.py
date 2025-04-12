@@ -117,6 +117,7 @@ def process_item(item: TasteIOItem) -> MediaEntry:
         title=item.get("name", ""),
         rating=rating_value,
         year=item.get("year", ""),
+        to='Completed',
         ids=ids
     )
 
