@@ -15,9 +15,9 @@ env/
 .idea/
 
 # Project specific
-SimklBackup.json
 ratings_cache.json
-ratings_cache.csv
+SimklBackup.json
+SimklBackup.zip
 
 # Chrome WebDriver
 chromedriver*
