@@ -69,14 +69,7 @@ Create a `.env` file based on `.env.example` and configure the following setting
 
 ## Configuration
 
-Create a `.env` file based on `.env.example` and configure the following settings:
-
-- `TASTE_USERNAME`: Your taste.io username
-- `SIMKL_CLIENT_ID`: Your Simkl API client ID (get it from https://simkl.com/settings/developer/)
-- `HEADLESS_MODE`: Run Chrome in headless mode (default: true)
-- `MIN_DELAY`/`MAX_DELAY`: Random delay between requests (default: 1.5/4.0)
-- `PAGE_LOAD_TIMEOUT`: Maximum time to wait for page load (default: 30)
-- `OUTPUT_FILE`: Name of the output file (default: SimklBackup.json)
+Create a `.env` file based on `.env.example`
 
 ## Usage
 
@@ -85,9 +78,9 @@ Create a `.env` file based on `.env.example` and configure the following setting
    ```bash
    python scraper.py
    ```
-3. Try to import the json into the importer on their website manually or run the import script:
+3. Try to import the json into the importer on their website manually or run the auto importer script:
    ```bash
-   python import_backup_into_simkl.py
+   python importer.py
    ```
 
 The scraper script will create a JSON file containing your ratings in the Simkl backup format. Subsequent runs will use
