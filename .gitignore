@@ -7,12 +7,17 @@ __pycache__/
 venv/
 env/
 
+# Env files
+.env
+
 # IDE
 .vscode/
 .idea/
 
 # Project specific
 SimklBackup.json
+rating_cache.json
+rating_cache.csv
 
 # Chrome WebDriver
 chromedriver*
