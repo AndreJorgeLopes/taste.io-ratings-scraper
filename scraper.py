@@ -93,10 +93,16 @@ def get_ids(title: str, year: int, category: str) -> int | None:
             }
 
         print(f"Warning: No matching Simkl ID found for {response.json()}")
+        # Track failed lookup
+        from cache import add_failed_lookup
+        add_failed_lookup(title, year, category, "No matching Simkl ID found")
         return None
 
     except Exception as e:
         print(f"Error fetching Simkl ID for {title}: {e}")
+        # Track failed lookup
+        from cache import add_failed_lookup
+        add_failed_lookup(title, year, category, str(e))
         return None
 
 def process_item(item: TasteIOItem) -> MediaEntry:
@@ -275,7 +281,7 @@ def fetch_watched_episodes(slug):
                     "episode": item.get("episode")
                 })
 
-        # Save to cache
+        # Save to consolidated episodes cache
         save_cache(watched_episodes, cache_key)
         return watched_episodes
 
@@ -311,6 +317,8 @@ def main():
     backup = SimklBackup(movies=[], shows=[])
     # Dictionary to store watched episodes data for the importer
     watched_episodes = {}
+    # Track items that failed to get Simkl IDs
+    failed_items = []
 
     try:
         # Fetch rated items
@@ -404,6 +412,16 @@ def main():
         print(f"Total shows: {len(backup['shows'])}")
         if watched_episodes:
             print(f"Watched episodes data saved to watched_episodes.json")
+
+        # Display failed lookups if any
+        from cache import get_failed_lookups
+        failed_lookups = get_failed_lookups()
+        if failed_lookups:
+            print("\n===== FAILED SIMKL ID LOOKUPS =====")
+            print("The following items could not be found in Simkl and may need to be manually imported:")
+            for i, item in enumerate(failed_lookups, 1):
+                print(f"{i}. {item['title']} ({item['year']}) - {item['category']} - {item['error']}")
+            print("\nPlease consider manually importing these items into Simkl.")
 
     except Exception as e:
         print(f"An error occurred: {e}")

@@ -93,7 +93,6 @@ def send_ratings_to_simkl(rating_groups: Dict[float, Dict[str, List[Dict[str, An
             )
             response.raise_for_status()
             print(f"Successfully sent {total_items} items with rating {rating} to ratings endpoint")
-            print(f"Response: {response.json()}")
         except requests.exceptions.RequestException as e:
             print(f"Error sending items with rating {rating} to ratings endpoint: {e}")
             if hasattr(e, 'response') and e.response:
@@ -111,7 +110,6 @@ def send_ratings_to_simkl(rating_groups: Dict[float, Dict[str, List[Dict[str, An
             add_response.raise_for_status()
             print(f"Successfully added {total_items} items to the completed list")
             print(f"Movies: {len(formatted_items['movies'])}, Shows: {len(formatted_items['shows'])}")
-            print(f"Response: {add_response.json()}")
         except requests.exceptions.RequestException as e:
             print(f"Error adding items to the completed list: {e}")
             if hasattr(e, 'response') and e.response:
@@ -162,7 +160,6 @@ def send_plantowatch_to_simkl(plantowatch_items: Dict[str, List[Dict[str, Any]]]
         response.raise_for_status()
         print(f"Successfully added {total_items} items to the plantowatch list")
         print(f"Movies: {len(plantowatch_items['movies'])}, Shows: {len(plantowatch_items['shows'])}")
-        # print(f"Response: {response.json()}")
     except requests.exceptions.RequestException as e:
         print(f"Error adding items to the plantowatch list: {e}")
         if hasattr(e, 'response') and e.response:
@@ -220,7 +217,7 @@ def send_watching_to_simkl(watching_items: Dict[str, List[Dict[str, Any]]]) -> N
             print(f"Response body: {e.response.text}")
 
 def send_watched_episodes_to_simkl() -> None:
-    """Send watched episodes data to Simkl history endpoint."""
+    """Send watched episodes data to Simkl history endpoint in a single request."""
     if not SIMKL_CLIENT_ID or not SIMKL_ACCESS_TOKEN:
         print("Error: SIMKL_CLIENT_ID or SIMKL_ACCESS_TOKEN not set. Please configure them in config.py")
         sys.exit(1)
@@ -242,29 +239,33 @@ def send_watched_episodes_to_simkl() -> None:
         print("No watched episodes data found.")
         return
 
+    # Filter out shows with no seasons or episodes
+    valid_shows = [show for show in watched_episodes if show.get("seasons")]
+
+    if not valid_shows:
+        print("No valid shows with episodes found.")
+        return
+
+    # Create the payload with all shows in a single request
+    payload = {"shows": valid_shows}
+
     headers = SIMKL_API_HEADERS.copy()
 
-    print(f"Sending watched episodes data for {len(watched_episodes)} shows to Simkl...")
+    print(f"Sending watched episodes data for {len(valid_shows)} shows to Simkl in a single request...")
 
-    # Send each show's watched episodes separately
-    for show_data in watched_episodes:
-        # Skip shows with no seasons or episodes
-        if not show_data.get("seasons"):
-            continue
-
-        try:
-            response = requests.post(
-                SIMKL_HISTORY_ENDPOINT,
-                headers=headers,
-                json=show_data
-            )
-            response.raise_for_status()
-            print(f"Successfully sent watched episodes for {show_data.get('title')}")
-        except requests.exceptions.RequestException as e:
-            print(f"Error sending watched episodes for {show_data.get('title')}: {e}")
-            if hasattr(e, 'response') and e.response:
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
+    try:
+        response = requests.post(
+            SIMKL_HISTORY_ENDPOINT,
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        print(f"Successfully sent watched episodes for all {len(valid_shows)} shows")
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending watched episodes: {e}")
+        if hasattr(e, 'response') and e.response:
+            print(f"Response status: {e.response.status_code}")
+            print(f"Response body: {e.response.text}")
 
 def main():
     # Load the backup file

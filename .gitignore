@@ -16,6 +16,7 @@ env/
 
 # Project specific
 ratings_cache*.json
+watched_episodes.json
 SimklBackup.json
 SimklBackup.zip
 
