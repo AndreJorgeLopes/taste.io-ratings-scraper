@@ -4,16 +4,25 @@ A Python library that scrapes your ratings from taste.io and converts them into 
 
 # Note:
 
-This script only works for shown you watched in full, because the Simkl api doesn't support episode/season ratings and I
-couldn't manage to find a way to get the episode/season ratings to work on the json/csv imports. As a small side note,
-you can get that info from your taste.io account on the endpoint `https://www.taste.io/api/tv/{tvShow.slug}/episodes`
-with the field `items[i].user.tracked`
+To get your taste.io authentication token, follow these steps:
+
+1. Log in to your taste.io account.
+2. Open the Developer Tools in your browser (usually by pressing F12).
+3. Navigate to the "Network" tab.
+4. Reload the taste.io page.
+5. In the "Network" tab, look for a request with the endpoint "/me".
+6. Click on the request to view its details.
+7. Copy the Authorization token (without the `Bearer` part) from the headers tab
+8. Paste it into the `TASTE_TOKEN` variable value.
+
+![Chrome Example](/images/taste-chrome-example.png)
 
 ## Configuration
 
 Create a `.env` file based on `.env.example` and configure the following settings:
 
 - `TASTE_USERNAME`: Your taste.io username
+- `TASTE_TOKEN`: Your taste.io authentication token (required for continue-watching and episode tracking)
 - `SIMKL_CLIENT_ID`: Your Simkl API client ID (get it from https://simkl.com/settings/developer/)
 - `SIMKL_ACCESS_TOKEN`: Your Simkl access token (Get it by following the instructions at this link:
   https://simkl.docs.apiary.io/#reference/authentication-oauth-2.0/)

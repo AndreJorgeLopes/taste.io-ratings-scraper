@@ -10,10 +10,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 from cache import load_cache, save_cache
 
 from config import (
-    USERNAME, BASE_URL, SAVED_URL, API_LIMIT, USER_AGENTS, REQUEST_HEADERS,
+    USERNAME, BASE_URL, SAVED_URL, CONTINUE_WATCHING_URL, TV_EPISODES_URL,
+    API_LIMIT, USER_AGENTS, REQUEST_HEADERS, get_auth_headers,
     MIN_DELAY, MAX_DELAY, HEADLESS_MODE, PAGE_LOAD_TIMEOUT,
     OUTPUT_FILE, JSON_INDENT, COOKIE_DEFAULTS,
-    SIMKL_CLIENT_ID, SIMKL_SEARCH_URL
+    SIMKL_CLIENT_ID, SIMKL_SEARCH_URL, TASTE_TOKEN
 )
 from schemas import SimklBackup, MediaEntry, TasteIOItem
 
@@ -188,9 +189,128 @@ def process_saved_item(item: TasteIOItem) -> MediaEntry:
         ids=ids
     )
 
+def fetch_continue_watching_items():
+    """Fetch items from the continue-watching API endpoint."""
+    if not TASTE_TOKEN:
+        print("Warning: TASTE_TOKEN not set. Cannot fetch continue-watching items.")
+        return []
+
+    # Try to load cached items
+    cached_items = load_cache('watching')
+    if cached_items:
+        print("Using cached continue-watching items...")
+        return cached_items
+
+    print("Cache not found or expired for continue-watching, fetching from API...")
+    all_items = []
+
+    # Retrieve the first page
+    first_page_url = f"{CONTINUE_WATCHING_URL}?limit={API_LIMIT}&offset=0"
+    print("Requesting URL:", first_page_url)
+
+    # Use authenticated headers
+    headers = get_auth_headers()
+    response = requests.get(first_page_url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    total_items = data.get("total", 0)
+    print(f"Total continue-watching items found: {total_items}")
+
+    # Process first page items and save to cache immediately
+    all_items.extend(data.get("items", []))
+    save_cache(all_items, 'watching')
+
+    # Fetch remaining pages
+    offset = API_LIMIT
+    while offset < total_items:
+        page_url = f"{CONTINUE_WATCHING_URL}?limit={API_LIMIT}&offset={offset}"
+        print("Requesting URL:", page_url)
+        page_response = requests.get(page_url, headers=headers)
+        page_response.raise_for_status()
+        page_data = page_response.json()
+        new_items = page_data.get("items", [])
+        all_items.extend(new_items)
+        # Update cache after each page
+        save_cache(all_items, 'watching')
+        offset += API_LIMIT
+
+    print(f"Total continue-watching items collected: {len(all_items)}")
+    return all_items
+
+def fetch_watched_episodes(slug):
+    """Fetch watched episodes for a TV show."""
+    if not TASTE_TOKEN:
+        print("Warning: TASTE_TOKEN not set. Cannot fetch episode data.")
+        return []
+
+    # Try to load cached items
+    cache_key = f"episodes_{slug}"
+    cached_items = load_cache(cache_key)
+    if cached_items:
+        print(f"Using cached episode data for {slug}...")
+        return cached_items
+
+    print(f"Fetching episode data for {slug}...")
+
+    # Use authenticated headers
+    headers = get_auth_headers()
+    url = TV_EPISODES_URL.format(slug=slug)
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract watched episodes (where user.tracked is true)
+        watched_episodes = []
+        for item in data.get("items", []):
+            # Skip episodes in season 0 (specials) as they're buggy
+            if item.get("season") == 0:
+                continue
+
+            if item.get("user", {}).get("tracked", False):
+                watched_episodes.append({
+                    "season": item.get("season"),
+                    "episode": item.get("episode")
+                })
+
+        # Save to cache
+        save_cache(watched_episodes, cache_key)
+        return watched_episodes
+
+    except Exception as e:
+        print(f"Error fetching episode data for {slug}: {e}")
+        return []
+
+def process_watching_item(item: TasteIOItem) -> MediaEntry:
+    """Process a single item from continue-watching and convert it to Simkl format."""
+    # Get the Simkl ID from their API
+    if item.get("category") == "movies":
+        category = "movie"
+    elif 'anime' in item.get("genre", "") or 'Animation' in item.get("genre", ""):
+        category = "anime"
+    else:
+        category = "tv"
+    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
+
+    # Skip items where we couldn't find a Simkl ID
+    if not ids:
+        return None
+
+    return MediaEntry(
+        title=item.get("name", ""),
+        rating=None,  # No rating for watching items
+        year=item.get("year", ""),
+        to='watching',  # Set status to watching
+        ids=ids
+    )
+
 def main():
     # Initialize the backup structure
     backup = SimklBackup(movies=[], shows=[])
+    # Dictionary to store watched episodes data for the importer
+    watched_episodes = {}
 
     try:
         # Fetch rated items
@@ -212,33 +332,83 @@ def main():
         # Fetch saved items
         saved_items = fetch_items_from_api(SAVED_URL, 'saved')
 
-        # Process saved items (filtering out those already in ratings)
+        # Process saved items (filter out duplicates)
         for item in saved_items:
-            # Process the item first to get the entry with proper IDs
+            # Skip items that are already rated
+            item_key = f"{item.get('name')}_{item.get('year')}"
+            if item_key in ratings_cache:
+                continue
+
+            # Process the saved item
             entry = process_saved_item(item)
+            if entry:
+                if item.get("category") == "movies":
+                    backup["movies"].append(entry)
+                else:
+                    backup["shows"].append(entry)
 
-            # Skip items where we couldn't get a valid entry (no Simkl ID)
-            if not entry:
-                continue
+        # Fetch continue-watching items if TASTE_TOKEN is available
+        if TASTE_TOKEN:
+            watching_items = fetch_continue_watching_items()
 
-            # Skip if this item is already in our ratings
-            simkl_id = entry.get("ids", {}).get("simkl")
-            if simkl_id and simkl_id in ratings_cache:
-                continue
+            # Process continue-watching items (filter out duplicates)
+            for item in watching_items:
+                # Skip items that are already rated or saved
+                item_key = f"{item.get('name')}_{item.get('year')}"
+                if item_key in ratings_cache:
+                    continue
 
-            if item.get("category") == "tv":
-                backup["shows"].append(entry)
-            else:  # Default to movies for unknown categories
-                backup["movies"].append(entry)
+                # Process the watching item
+                entry = process_watching_item(item)
+                if entry:
+                    if item.get("category") == "movies":
+                        backup["movies"].append(entry)
+                    else:
+                        # For TV shows, fetch watched episodes
+                        slug = item.get("slug")
+                        if slug:
+                            show_episodes = fetch_watched_episodes(slug)
+                            if show_episodes:
+                                # Group episodes by season
+                                seasons = {}
+                                for ep in show_episodes:
+                                    season_num = ep["season"]
+                                    if season_num not in seasons:
+                                        seasons[season_num] = []
+                                    seasons[season_num].append({"number": ep["episode"]})
 
-        # Save the final file in JSON format
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+                                # Store watched episodes for this show
+                                watched_episodes[item_key] = {
+                                    "title": item.get("name", ""),
+                                    "year": item.get("year", ""),
+                                    "ids": entry.get("ids", {}),
+                                    "seasons": [
+                                        {"number": season, "episodes": episodes}
+                                        for season, episodes in seasons.items()
+                                    ]
+                                }
+
+                        backup["shows"].append(entry)
+
+        # Save the backup to a file
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(backup, f, ensure_ascii=False, indent=JSON_INDENT)
-        print(f"Backup file '{OUTPUT_FILE}' has been created.")
+
+        # Save watched episodes to a separate file for the importer
+        if watched_episodes:
+            with open("watched_episodes.json", 'w', encoding='utf-8') as f:
+                json.dump(list(watched_episodes.values()), f, ensure_ascii=False, indent=JSON_INDENT)
+
+        print(f"Backup saved to {OUTPUT_FILE}")
+        print(f"Total movies: {len(backup['movies'])}")
+        print(f"Total shows: {len(backup['shows'])}")
+        if watched_episodes:
+            print(f"Watched episodes data saved to watched_episodes.json")
 
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
+        # Close the WebDriver
         driver.quit()
 
 if __name__ == "__main__":

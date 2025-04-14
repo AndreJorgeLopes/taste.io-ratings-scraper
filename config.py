@@ -11,7 +11,12 @@ USERNAME = os.getenv("TASTE_USERNAME")  # Your taste.io username
 # API settings
 BASE_URL = f"https://www.taste.io/api/users/{USERNAME}/ratings"
 SAVED_URL = f"https://www.taste.io/api/users/{USERNAME}/saved"
+CONTINUE_WATCHING_URL = "https://www.taste.io/api/browse/continue-watching"
+TV_EPISODES_URL = "https://www.taste.io/api/tv/{slug}/episodes"
 API_LIMIT = 96  # Maximum number of items per request
+
+# Taste.io authentication
+TASTE_TOKEN = os.getenv("TASTE_TOKEN")  # Your taste.io authentication token
 
 # Simkl API settings
 # Get your client_id by creating a new app at https://simkl.com/settings/developer/
@@ -20,6 +25,7 @@ SIMKL_CLIENT_ID = os.getenv("SIMKL_CLIENT_ID")  # Your Simkl client ID
 SIMKL_SEARCH_URL = "https://api.simkl.com/search"
 SIMKL_IMPORT_ENDPOINT = "https://api.simkl.com/sync/ratings"
 SIMKL_ADD_TO_LIST_ENDPOINT = "https://api.simkl.com/sync/add-to-list"
+SIMKL_HISTORY_ENDPOINT = "https://api.simkl.com/sync/history"
 SIMKL_ACCESS_TOKEN = os.getenv("SIMKL_ACCESS_TOKEN")  # Your Simkl access token gotten by following the instructions at this link: https://simkl.docs.apiary.io/#reference/authentication-oauth-2.0/
 
 # Simkl API Headers
@@ -52,6 +58,16 @@ REQUEST_HEADERS = {
     "Sec-Fetch-User": "?1",
     "Upgrade-Insecure-Requests": "1"
 }
+
+# Authenticated request headers (when TASTE_TOKEN is available)
+def get_auth_headers():
+    """Get authenticated headers for taste.io API requests."""
+    if not TASTE_TOKEN:
+        return REQUEST_HEADERS
+
+    auth_headers = REQUEST_HEADERS.copy()
+    auth_headers["Authorization"] = f"Bearer {TASTE_TOKEN}"
+    return auth_headers
 
 # Cookie settings
 COOKIE_DEFAULTS = {

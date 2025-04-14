@@ -1,5 +1,6 @@
 import json
 import sys
+import os
 import requests
 from typing import Dict, List, Any
 from collections import defaultdict
@@ -7,7 +8,8 @@ from collections import defaultdict
 from config import (
     OUTPUT_FILE, SIMKL_CLIENT_ID,
     SIMKL_IMPORT_ENDPOINT, SIMKL_ACCESS_TOKEN,
-    SIMKL_API_HEADERS, SIMKL_ADD_TO_LIST_ENDPOINT
+    SIMKL_API_HEADERS, SIMKL_ADD_TO_LIST_ENDPOINT,
+    SIMKL_HISTORY_ENDPOINT
 )
 from schemas import SimklBackup, MediaEntry
 
@@ -167,6 +169,103 @@ def send_plantowatch_to_simkl(plantowatch_items: Dict[str, List[Dict[str, Any]]]
             print(f"Response status: {e.response.status_code}")
             print(f"Response body: {e.response.text}")
 
+def extract_watching_items(backup: SimklBackup) -> Dict[str, List[Dict[str, Any]]]:
+    """Extract items with 'watching' status from the backup.
+    Returns a dictionary with 'movies' and 'shows' keys."""
+    watching_items = {
+        'movies': [],
+        'shows': []
+    }
+
+    # Process movies
+    for movie in backup['movies']:
+        if movie.get('to') == 'watching':
+            watching_items['movies'].append(movie)
+
+    # Process shows
+    for show in backup['shows']:
+        if show.get('to') == 'watching':
+            watching_items['shows'].append(show)
+
+    return watching_items
+
+def send_watching_to_simkl(watching_items: Dict[str, List[Dict[str, Any]]]) -> None:
+    """Send watching items to Simkl API using the add-to-list endpoint.
+    Expects a dictionary with 'movies' and 'shows' keys."""
+    if not SIMKL_CLIENT_ID or not SIMKL_ACCESS_TOKEN:
+        print("Error: SIMKL_CLIENT_ID or SIMKL_ACCESS_TOKEN not set. Please configure them in config.py")
+        sys.exit(1)
+
+    total_items = len(watching_items['movies']) + len(watching_items['shows'])
+    if total_items == 0:
+        print("No watching items to send.")
+        return
+
+    headers = SIMKL_API_HEADERS.copy()
+
+    print(f"Sending {total_items} items to the watching list...")
+    try:
+        response = requests.post(
+            SIMKL_ADD_TO_LIST_ENDPOINT,
+            headers=headers,
+            json=watching_items
+        )
+        response.raise_for_status()
+        print(f"Successfully added {total_items} items to the watching list")
+        print(f"Movies: {len(watching_items['movies'])}, Shows: {len(watching_items['shows'])}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error adding items to the watching list: {e}")
+        if hasattr(e, 'response') and e.response:
+            print(f"Response status: {e.response.status_code}")
+            print(f"Response body: {e.response.text}")
+
+def send_watched_episodes_to_simkl() -> None:
+    """Send watched episodes data to Simkl history endpoint."""
+    if not SIMKL_CLIENT_ID or not SIMKL_ACCESS_TOKEN:
+        print("Error: SIMKL_CLIENT_ID or SIMKL_ACCESS_TOKEN not set. Please configure them in config.py")
+        sys.exit(1)
+
+    # Check if watched episodes file exists
+    if not os.path.exists("watched_episodes.json"):
+        print("No watched episodes data found.")
+        return
+
+    # Load watched episodes data
+    try:
+        with open("watched_episodes.json", 'r', encoding='utf-8') as f:
+            watched_episodes = json.load(f)
+    except Exception as e:
+        print(f"Error loading watched episodes data: {e}")
+        return
+
+    if not watched_episodes:
+        print("No watched episodes data found.")
+        return
+
+    headers = SIMKL_API_HEADERS.copy()
+
+    print(f"Sending watched episodes data for {len(watched_episodes)} shows to Simkl...")
+
+    # Send each show's watched episodes separately
+    for show_data in watched_episodes:
+        # Skip shows with no seasons or episodes
+        if not show_data.get("seasons"):
+            continue
+
+        try:
+            response = requests.post(
+                SIMKL_HISTORY_ENDPOINT,
+                headers=headers,
+                json=show_data
+            )
+            response.raise_for_status()
+            print(f"Successfully sent watched episodes for {show_data.get('title')}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending watched episodes for {show_data.get('title')}: {e}")
+            if hasattr(e, 'response') and e.response:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response body: {e.response.text}")
+
 def main():
     # Load the backup file
     backup_file = OUTPUT_FILE
@@ -175,12 +274,16 @@ def main():
 
     # Extract plantowatch items
     plantowatch_items = extract_plantowatch_items(backup)
-    print(f"Found {len(plantowatch_items)} items with 'plantowatch' status")
+    print(f"Found {len(plantowatch_items['movies']) + len(plantowatch_items['shows'])} items with 'plantowatch' status")
 
-    # Filter out plantowatch items from the backup for rating processing
+    # Extract watching items
+    watching_items = extract_watching_items(backup)
+    print(f"Found {len(watching_items['movies']) + len(watching_items['shows'])} items with 'watching' status")
+
+    # Filter out plantowatch and watching items from the backup for rating processing
     rated_backup = SimklBackup(
-        movies=[movie for movie in backup['movies'] if movie.get('to') != 'plantowatch'],
-        shows=[show for show in backup['shows'] if show.get('to') != 'plantowatch']
+        movies=[movie for movie in backup['movies'] if movie.get('to') not in ['plantowatch', 'watching']],
+        shows=[show for show in backup['shows'] if show.get('to') not in ['plantowatch', 'watching']]
     )
 
     # Check if ratings are sorted
@@ -210,6 +313,14 @@ def main():
     print("\nSending plantowatch items to Simkl...")
     print(f"Found {len(plantowatch_items['movies'])} movies and {len(plantowatch_items['shows'])} shows with 'plantowatch' status")
     send_plantowatch_to_simkl(plantowatch_items)
+
+    # Send watching items to Simkl
+    print("\nSending watching items to Simkl...")
+    send_watching_to_simkl(watching_items)
+
+    # Send watched episodes to Simkl
+    print("\nSending watched episodes to Simkl...")
+    send_watched_episodes_to_simkl()
 
     print("\nImport process completed.")
 
