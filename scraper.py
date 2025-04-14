@@ -10,7 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from cache import load_cache, save_cache
 
 from config import (
-    USERNAME, BASE_URL, USER_AGENTS, REQUEST_HEADERS,
+    USERNAME, BASE_URL, SAVED_URL, API_LIMIT, USER_AGENTS, REQUEST_HEADERS,
     MIN_DELAY, MAX_DELAY, HEADLESS_MODE, PAGE_LOAD_TIMEOUT,
     OUTPUT_FILE, JSON_INDENT, COOKIE_DEFAULTS,
     SIMKL_CLIENT_ID, SIMKL_SEARCH_URL
@@ -117,7 +117,74 @@ def process_item(item: TasteIOItem) -> MediaEntry:
         title=item.get("name", ""),
         rating=rating_value,
         year=item.get("year", ""),
-        to='Completed',
+        to='completed',
+        ids=ids
+    )
+
+def fetch_items_from_api(url, cache_key):
+    """Fetch all items from the given API URL with pagination."""
+    # Try to load cached items
+    cached_items = load_cache(cache_key)
+    if cached_items:
+        print(f"Using cached {cache_key} items...")
+        return cached_items
+
+    print(f"Cache not found or expired for {cache_key}, fetching from API...")
+    all_items = []
+
+    # Retrieve the first page to get total items
+    first_page_url = f"{url}?limit={API_LIMIT}&offset=0"
+    if cache_key == 'saved':
+        first_page_url += "&maxReleaseDate=1744443802477&sort=trending"
+
+    print("Requesting URL:", first_page_url)
+    data = get_json_from_page(first_page_url)
+
+    total_items = data.get("total", 0)
+    print(f"Total {cache_key} items found:", total_items)
+
+    # Process first page items and save to cache immediately
+    all_items.extend(data.get("items", []))
+    save_cache(all_items, cache_key)
+
+    # Fetch remaining pages
+    offset = API_LIMIT
+    while offset < total_items:
+        page_url = f"{url}?limit={API_LIMIT}&offset={offset}"
+        if cache_key == 'saved':
+            page_url += "&maxReleaseDate=1744443802477&sort=trending"
+
+        print("Requesting URL:", page_url)
+        page_data = get_json_from_page(page_url)
+        new_items = page_data.get("items", [])
+        all_items.extend(new_items)
+        # Update cache after each page
+        save_cache(all_items, cache_key)
+        offset += API_LIMIT
+
+    print(f"Total {cache_key} items collected:", len(all_items))
+    return all_items
+
+def process_saved_item(item: TasteIOItem) -> MediaEntry:
+    """Process a single saved item from taste.io and convert it to Simkl format with 'plantowatch' status."""
+    # Get the Simkl ID from their API
+    if item.get("category") == "movies":
+        category = "movie"
+    elif 'anime' in item.get("genre", "") or 'Animation' in item.get("genre", ""):
+        category = "anime"
+    else:
+        category = "tv"
+    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
+
+    # Skip items where we couldn't find a Simkl ID
+    if not ids:
+        return None
+
+    return MediaEntry(
+        title=item.get("name", ""),
+        rating=None,  # No rating for saved items
+        year=item.get("year", ""),
+        to='plantowatch',  # Set status to plantowatch
         ids=ids
     )
 
@@ -126,43 +193,39 @@ def main():
     backup = SimklBackup(movies=[], shows=[])
 
     try:
-        # Try to load cached items
-        cached_items = load_cache()
-        if cached_items:
-            print("Using cached items...")
-            all_items = cached_items
-        else:
-            print("Cache not found or expired, fetching from API...")
-            all_items = []
-            # Retrieve the first page to get total items
-            first_page_url = f"{BASE_URL}?offset=0"
-            print("Requesting URL:", first_page_url)
-            data = get_json_from_page(first_page_url)
+        # Fetch rated items
+        ratings_items = fetch_items_from_api(BASE_URL, 'ratings')
 
-            total_items = data.get("total", 0)
-            print("Total items found:", total_items)
-
-            # Process first page items and save to cache immediately
-            all_items.extend(data.get("items", []))
-            save_cache(all_items)
-
-            # Fetch remaining pages
-            offset = 24
-            while offset < total_items:
-                page_url = f"{BASE_URL}?offset={offset}"
-                print("Requesting URL:", page_url)
-                page_data = get_json_from_page(page_url)
-                new_items = page_data.get("items", [])
-                all_items.extend(new_items)
-                # Update cache after each page
-                save_cache(all_items)
-                offset += 24
-
-        print("Total items collected:", len(all_items))
-
-        # Process all items
-        for item in all_items:
+        # Process rated items
+        ratings_cache = set()  # Keep track of rated items to filter out duplicates
+        for item in ratings_items:
             entry = process_item(item)
+            # Add to ratings cache for filtering saved items later
+            if entry and entry.get("ids") and entry.get("ids").get("simkl"):
+                ratings_cache.add(entry.get("ids").get("simkl"))
+
+            if item.get("category") == "tv":
+                backup["shows"].append(entry)
+            else:  # Default to movies for unknown categories
+                backup["movies"].append(entry)
+
+        # Fetch saved items
+        saved_items = fetch_items_from_api(SAVED_URL, 'saved')
+
+        # Process saved items (filtering out those already in ratings)
+        for item in saved_items:
+            # Process the item first to get the entry with proper IDs
+            entry = process_saved_item(item)
+
+            # Skip items where we couldn't get a valid entry (no Simkl ID)
+            if not entry:
+                continue
+
+            # Skip if this item is already in our ratings
+            simkl_id = entry.get("ids", {}).get("simkl")
+            if simkl_id and simkl_id in ratings_cache:
+                continue
+
             if item.get("category") == "tv":
                 backup["shows"].append(entry)
             else:  # Default to movies for unknown categories

@@ -15,7 +15,7 @@ env/
 .idea/
 
 # Project specific
-ratings_cache.json
+ratings_cache*.json
 SimklBackup.json
 SimklBackup.zip
 

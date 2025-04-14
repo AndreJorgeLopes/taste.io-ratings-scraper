@@ -10,6 +10,8 @@ USERNAME = os.getenv("TASTE_USERNAME")  # Your taste.io username
 
 # API settings
 BASE_URL = f"https://www.taste.io/api/users/{USERNAME}/ratings"
+SAVED_URL = f"https://www.taste.io/api/users/{USERNAME}/saved"
+API_LIMIT = 96  # Maximum number of items per request
 
 # Simkl API settings
 # Get your client_id by creating a new app at https://simkl.com/settings/developer/
