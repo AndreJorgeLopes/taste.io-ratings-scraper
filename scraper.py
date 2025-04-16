@@ -66,6 +66,7 @@ def get_ids(title: str, year: int, category: str) -> int | None:
         return None
 
     try:
+        # First try with title and year
         params = {
             "q": f"{title} {year}",
             "page": 1,
@@ -73,6 +74,21 @@ def get_ids(title: str, year: int, category: str) -> int | None:
             "client_id": SIMKL_CLIENT_ID
         }
 
+        final_search_url = f"{SIMKL_SEARCH_URL}/{category}"
+        response = requests.get(final_search_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        # Check if we got results
+        if data and len(data) > 0:
+            item = data[0]
+            if item.get("ids", {}).get("simkl_id"):
+                return {
+                    "simkl": item.get("ids", {}).get("simkl_id"),
+                    "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                }
+
+        # If no results, try without year
         params_without_year = {
             "q": title,
             "page": 1,
@@ -80,19 +96,49 @@ def get_ids(title: str, year: int, category: str) -> int | None:
             "client_id": SIMKL_CLIENT_ID
         }
 
-        final_search_url = f"{SIMKL_SEARCH_URL}/{category}"
-
-        response = requests.get(final_search_url, params=params)
+        response = requests.get(final_search_url, params=params_without_year)
         response.raise_for_status()
-        item = response.json()[0] or requests.get(final_search_url, params=params_without_year).raise_for_status().json()[0]
+        data = response.json()
 
-        if item.get("ids", {}).get("simkl_id"):
-            return {
-                "simkl": item.get("ids", {}).get("simkl_id"),
-                "tmdb": int(item.get("ids", {}).get("tmdb", 0))
-            }
+        if data and len(data) > 0:
+            item = data[0]
+            if item.get("ids", {}).get("simkl_id"):
+                return {
+                    "simkl": item.get("ids", {}).get("simkl_id"),
+                    "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                }
 
-        print(f"Warning: No matching Simkl ID found for {response.json()}")
+        # If still no results and not already anime category, try with anime category
+        if category != "anime":
+            anime_url = f"{SIMKL_SEARCH_URL}/anime"
+
+            # Try with year first
+            response = requests.get(anime_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if data and len(data) > 0:
+                item = data[0]
+                if item.get("ids", {}).get("simkl_id"):
+                    return {
+                        "simkl": item.get("ids", {}).get("simkl_id"),
+                        "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                    }
+
+            # Try without year
+            response = requests.get(anime_url, params=params_without_year)
+            response.raise_for_status()
+            data = response.json()
+
+            if data and len(data) > 0:
+                item = data[0]
+                if item.get("ids", {}).get("simkl_id"):
+                    return {
+                        "simkl": item.get("ids", {}).get("simkl_id"),
+                        "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                    }
+
+        print(f"Warning: No matching Simkl ID found for {title} ({year})")
         # Track failed lookup
         from cache import add_failed_lookup
         add_failed_lookup(title, year, category, "No matching Simkl ID found")
@@ -321,42 +367,51 @@ def main():
     failed_items = []
 
     try:
-        # Fetch rated items
-        ratings_items = fetch_items_from_api(BASE_URL, 'ratings')
-
-        # Process rated items
+        # Fetch rated items if enabled
         ratings_cache = set()  # Keep track of rated items to filter out duplicates
-        for item in ratings_items:
-            entry = process_item(item)
-            # Add to ratings cache for filtering saved items later
-            if entry and entry.get("ids") and entry.get("ids").get("simkl"):
-                ratings_cache.add(entry.get("ids").get("simkl"))
+        if SCRAPE_RATINGS:
+            print("Scraping ratings...")
+            ratings_items = fetch_items_from_api(BASE_URL, 'ratings')
 
-            if item.get("category") == "tv":
-                backup["shows"].append(entry)
-            else:  # Default to movies for unknown categories
-                backup["movies"].append(entry)
+            # Process rated items
+            for item in ratings_items:
+                entry = process_item(item)
+                # Add to ratings cache for filtering saved items later
+                if entry and entry.get("ids") and entry.get("ids").get("simkl"):
+                    ratings_cache.add(entry.get("ids").get("simkl"))
 
-        # Fetch saved items
-        saved_items = fetch_items_from_api(SAVED_URL, 'saved')
-
-        # Process saved items (filter out duplicates)
-        for item in saved_items:
-            # Skip items that are already rated
-            item_key = f"{item.get('name')}_{item.get('year')}"
-            if item_key in ratings_cache:
-                continue
-
-            # Process the saved item
-            entry = process_saved_item(item)
-            if entry:
-                if item.get("category") == "movies":
-                    backup["movies"].append(entry)
-                else:
+                if item.get("category") == "tv":
                     backup["shows"].append(entry)
+                else:  # Default to movies for unknown categories
+                    backup["movies"].append(entry)
+        else:
+            print("Skipping ratings scraping (disabled in config)")
 
-        # Fetch continue-watching items if TASTE_TOKEN is available
-        if TASTE_TOKEN:
+        # Fetch saved items if enabled
+        if SCRAPE_SAVED:
+            print("Scraping saved items...")
+            saved_items = fetch_items_from_api(SAVED_URL, 'saved')
+
+            # Process saved items (filter out duplicates)
+            for item in saved_items:
+                # Skip items that are already rated
+                item_key = f"{item.get('name')}_{item.get('year')}"
+                if item_key in ratings_cache:
+                    continue
+
+                # Process the saved item
+                entry = process_saved_item(item)
+                if entry:
+                    if item.get("category") == "movies":
+                        backup["movies"].append(entry)
+                    else:
+                        backup["shows"].append(entry)
+        else:
+            print("Skipping saved items scraping (disabled in config)")
+
+        # Fetch continue-watching items if enabled and TASTE_TOKEN is available
+        if SCRAPE_CONTINUE_WATCHING and TASTE_TOKEN:
+            print("Scraping continue-watching items...")
             watching_items = fetch_continue_watching_items()
 
             # Process continue-watching items (filter out duplicates)
@@ -397,6 +452,10 @@ def main():
                                 }
 
                         backup["shows"].append(entry)
+        elif not SCRAPE_CONTINUE_WATCHING:
+            print("Skipping continue-watching scraping (disabled in config)")
+        elif not TASTE_TOKEN:
+            print("Skipping continue-watching scraping (TASTE_TOKEN not set)")
 
         # Save the backup to a file
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:

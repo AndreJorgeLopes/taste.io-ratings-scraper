@@ -92,3 +92,8 @@ JSON_INDENT = 2
 # Cache settings
 CACHE_FILE = os.getenv("CACHE_FILE", "ratings_cache.json")
 CACHE_TIMEOUT_DAYS = int(os.getenv("CACHE_TIMEOUT_DAYS", 1))
+
+# Feature toggles (all enabled by default)
+SCRAPE_RATINGS = os.getenv("SCRAPE_RATINGS", "true").lower() == "true"
+SCRAPE_SAVED = os.getenv("SCRAPE_SAVED", "true").lower() == "true"
+SCRAPE_CONTINUE_WATCHING = os.getenv("SCRAPE_CONTINUE_WATCHING", "true").lower() == "true"

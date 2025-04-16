@@ -89,24 +89,39 @@ def save_cache(items, cache_key='ratings'):
         print(f"Error saving {cache_key} cache: {e}")
 
 def add_failed_lookup(title, year, category, error):
-    """Add a failed Simkl ID lookup to the failed lookups cache."""
+    """Add a failed Simkl ID lookup to the failed lookups cache.
+    Only adds entries with 'list index out of range' errors and prevents duplicates.
+    """
+    # Only track specific errors that indicate lookup issues, not API limits
+    if "list index out of range" not in str(error) and not str(error).startswith("No matching Simkl ID found"):
+        if "412 Client Error: Precondition Failed" in str(error):
+            print("\nERROR: You've hit the Simkl API daily limit!")
+            print("Please wait until tomorrow before trying again or check your limit at: https://simkl.com/settings/developer/")
+        return
+
     try:
         # Load existing failed lookups
         failed_lookups = load_cache('failed_lookups') or []
 
-        # Add new failed lookup
-        failed_lookups.append({
-            'title': title,
-            'year': year,
-            'category': category,
-            'error': str(error),
-            'timestamp': time.time()
-        })
+        # Check if this item is already in the failed lookups
+        item_key = f"{title}_{year}_{category}"
+        existing_items = [f"{item['title']}_{item['year']}_{item['category']}" for item in failed_lookups]
 
-        # Save updated failed lookups
-        save_cache(failed_lookups, 'failed_lookups')
+        # Only add if not already in the list
+        if item_key not in existing_items:
+            failed_lookups.append({
+                'title': title,
+                'year': year,
+                'category': category,
+                'error': str(error),
+                'timestamp': time.time()
+            })
+
+            # Save updated failed lookups
+            save_cache(failed_lookups, 'failed_lookups')
     except Exception as e:
         print(f"Error adding failed lookup for {title}: {e}")
+
 
 def get_failed_lookups():
     """Get all failed Simkl ID lookups."""

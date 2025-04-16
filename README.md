@@ -4,7 +4,8 @@ A Python library that scrapes your ratings from taste.io and converts them into 
 
 # Note:
 
-To get your taste.io authentication token, follow these steps:
+To get your taste.io authentication token, follow these steps (changes every 8 days (you can check that date in the
+cookies field "token")):
 
 1. Log in to your taste.io account.
 2. Open the Developer Tools in your browser (usually by pressing F12).
@@ -12,7 +13,7 @@ To get your taste.io authentication token, follow these steps:
 4. Reload the taste.io page.
 5. In the "Network" tab, look for a request with the endpoint "/me".
 6. Click on the request to view its details.
-7. Copy the Authorization token (without the `Bearer` part) from the headers tab
+7. Copy the Authorization token (without the `Bearer ` part) from the headers tab
 8. Paste it into the `TASTE_TOKEN` variable value.
 
 ![Chrome Example](/images/taste-chrome-example.png)
