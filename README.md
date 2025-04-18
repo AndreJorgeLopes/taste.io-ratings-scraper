@@ -31,6 +31,11 @@ Create a `.env` file based on `.env.example` and configure the following setting
 - `MIN_DELAY`/`MAX_DELAY`: Random delay between requests (default: 1.5/4.0)
 - `PAGE_LOAD_TIMEOUT`: Maximum time to wait for page load (default: 30)
 - `OUTPUT_FILE`: Name of the output file (default: SimklBackup.json)
+- `CACHE_FILE`: Name of the base cache file, to which we add suffixes for each category (default: cache.json)
+- `CACHE_TIMEOUT_DAYS`: Days before cache expires (default: 1)
+- `SCRAPE_RATINGS`: Enable scraping of ratings (default: true)
+- `SCRAPE_SAVED`: Enable scraping of saved items (default: true)
+- `SCRAPE_CONTINUE_WATCHING`: Enable scraping of continue-watching items (default: true)
 
 ## Features
 
@@ -39,15 +44,18 @@ Create a `.env` file based on `.env.example` and configure the following setting
 - Supports both movies and TV shows
 - Handles pagination automatically
 - Exports data to JSON format
-- Caches API responses for faster subsequent runs
+- Caches API responses for faster subsequent runs (with configurable timeout)
 - Advanced anti-bot detection measures
   - Random user agent selection
   - Cookie management
   - Request headers customization
   - Automated ChromeDriver management
-- Configurable settings
+- Configurable settings via `.env` and `config.py`
 - Converts taste.io's 4-star rating system to Simkl's 10-point scale
-- Fetches Simkl IDs for each title
+- Fetches Simkl IDs for each title (with fallback and failed lookup tracking)
+- Tracks failed Simkl ID lookups and saves them for review
+- Fetches and exports watched episodes for TV shows (if enabled)
+- Feature toggles for ratings, saved, and continue-watching scraping
 
 ## Requirements
 
@@ -79,7 +87,7 @@ Create a `.env` file based on `.env.example` and configure the following setting
 
 ## Configuration
 
-Create a `.env` file based on `.env.example`
+Create a `.env` file based on `.env.example` and fill in all required fields.
 
 ## Usage
 
@@ -88,13 +96,16 @@ Create a `.env` file based on `.env.example`
    ```bash
    python scraper.py
    ```
-3. Try to import the json into the importer on their website manually or run the auto importer script:
+3. Try to import the JSON into the importer on their website manually or run the auto importer script:
    ```bash
    python importer.py
    ```
 
 The scraper script will create a JSON file containing your ratings in the Simkl backup format. Subsequent runs will use
-cached API responses when available.
+cached API responses when available (unless the cache expires or is deleted). Failed Simkl ID lookups will be saved to
+`failed_lookups.json` for manual review.
+
+If enabled, watched episodes for TV shows will be exported to `watched_episodes.json` for use with the Simkl importer.
 
 The import script will import the ratings from the JSON file into your Simkl account by chunking them into ratings after
 sorting them.
@@ -121,6 +132,26 @@ The JSON output file follows the Simkl backup format:
   "shows": [...]
 }
 ```
+
+### Watched Episodes Output
+
+If continue-watching and episode tracking are enabled, a `watched_episodes.json` file will be created with the following
+structure:
+
+```json
+[
+	{
+		"title": "Show Title",
+		"year": 2023,
+		"ids": { "simkl": 123456 },
+		"seasons": [{ "number": 1, "episodes": [{ "number": 1 }, { "number": 2 }] }]
+	}
+]
+```
+
+### Failed Lookups Output
+
+If any Simkl ID lookups fail, a `failed_lookups.json` file will be created for manual review.
 
 ## License
 
