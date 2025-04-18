@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from config import CACHE_FILE, CACHE_TIMEOUT_DAYS
 
 # Global cache for episodes data
-EPISODES_CACHE_FILE = "episodes_cache.json"
+EPISODES_CACHE_FILE = "cache_episodes.json"
 # Global cache for failed Simkl ID lookups
 FAILED_LOOKUPS_FILE = "failed_lookups.json"
 
@@ -16,8 +16,8 @@ def get_cache_file(cache_key):
     elif cache_key.startswith('episodes_'):
         # All episode data is now stored in a single file
         return EPISODES_CACHE_FILE
-    elif cache_key == 'failed_lookups':
-        return FAILED_LOOKUPS_FILE
+    # elif cache_key == 'failed_lookups':
+    #     return FAILED_LOOKUPS_FILE
     else:
         # Add the cache key to the filename before the extension
         base, ext = os.path.splitext(CACHE_FILE)
@@ -97,6 +97,7 @@ def add_failed_lookup(title, year, category, error):
         if "412 Client Error: Precondition Failed" in str(error):
             print("\nERROR: You've hit the Simkl API daily limit!")
             print("Please wait until tomorrow before trying again or check your limit at: https://simkl.com/settings/developer/")
+            raise SimklApiLimitException("Simkl API daily limit reached")
         return
 
     try:
@@ -113,8 +114,6 @@ def add_failed_lookup(title, year, category, error):
                 'title': title,
                 'year': year,
                 'category': category,
-                'error': str(error),
-                'timestamp': time.time()
             })
 
             # Save updated failed lookups
@@ -126,3 +125,7 @@ def add_failed_lookup(title, year, category, error):
 def get_failed_lookups():
     """Get all failed Simkl ID lookups."""
     return load_cache('failed_lookups') or []
+
+
+class SimklApiLimitException(Exception):
+    pass

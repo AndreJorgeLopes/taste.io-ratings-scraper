@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import random
@@ -8,13 +9,15 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from cache import load_cache, save_cache
+from cache import SimklApiLimitException, EPISODES_CACHE_FILE, CACHE_TIMEOUT_DAYS
 
 from config import (
     USERNAME, BASE_URL, SAVED_URL, CONTINUE_WATCHING_URL, TV_EPISODES_URL,
     API_LIMIT, USER_AGENTS, REQUEST_HEADERS, get_auth_headers,
     MIN_DELAY, MAX_DELAY, HEADLESS_MODE, PAGE_LOAD_TIMEOUT,
     OUTPUT_FILE, JSON_INDENT, COOKIE_DEFAULTS,
-    SIMKL_CLIENT_ID, SIMKL_SEARCH_URL, TASTE_TOKEN
+    SIMKL_CLIENT_ID, SIMKL_SEARCH_URL, TASTE_TOKEN,
+    SCRAPE_RATINGS, SCRAPE_SAVED, SCRAPE_CONTINUE_WATCHING
 )
 from schemas import SimklBackup, MediaEntry, TasteIOItem
 
@@ -66,9 +69,10 @@ def get_ids(title: str, year: int, category: str) -> int | None:
         return None
 
     try:
-        # First try with title and year
+        # First try with title and year if it exists
+        query = f"{title} {year}" if year else title
         params = {
-            "q": f"{title} {year}",
+            "q": query,
             "page": 1,
             "limit": 1,
             "client_id": SIMKL_CLIENT_ID
@@ -88,25 +92,26 @@ def get_ids(title: str, year: int, category: str) -> int | None:
                     "tmdb": int(item.get("ids", {}).get("tmdb", 0))
                 }
 
-        # If no results, try without year
-        params_without_year = {
-            "q": title,
-            "page": 1,
-            "limit": 1,
-            "client_id": SIMKL_CLIENT_ID
-        }
+        if year != None:
+            # If no results, try without year
+            params_without_year = {
+                "q": title,
+                "page": 1,
+                "limit": 1,
+                "client_id": SIMKL_CLIENT_ID
+            }
 
-        response = requests.get(final_search_url, params=params_without_year)
-        response.raise_for_status()
-        data = response.json()
+            response = requests.get(final_search_url, params=params_without_year)
+            response.raise_for_status()
+            data = response.json()
 
-        if data and len(data) > 0:
-            item = data[0]
-            if item.get("ids", {}).get("simkl_id"):
-                return {
-                    "simkl": item.get("ids", {}).get("simkl_id"),
-                    "tmdb": int(item.get("ids", {}).get("tmdb", 0))
-                }
+            if data and len(data) > 0:
+                item = data[0]
+                if item.get("ids", {}).get("simkl_id"):
+                    return {
+                        "simkl": item.get("ids", {}).get("simkl_id"),
+                        "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                    }
 
         # If still no results and not already anime category, try with anime category
         if category != "anime":
@@ -125,54 +130,30 @@ def get_ids(title: str, year: int, category: str) -> int | None:
                         "tmdb": int(item.get("ids", {}).get("tmdb", 0))
                     }
 
-            # Try without year
-            response = requests.get(anime_url, params=params_without_year)
-            response.raise_for_status()
-            data = response.json()
+            if year != None:
+                # Try without year
+                response = requests.get(anime_url, params=params_without_year)
+                response.raise_for_status()
+                data = response.json()
 
-            if data and len(data) > 0:
-                item = data[0]
-                if item.get("ids", {}).get("simkl_id"):
-                    return {
-                        "simkl": item.get("ids", {}).get("simkl_id"),
-                        "tmdb": int(item.get("ids", {}).get("tmdb", 0))
-                    }
+                if data and len(data) > 0:
+                    item = data[0]
+                    if item.get("ids", {}).get("simkl_id"):
+                        return {
+                            "simkl": item.get("ids", {}).get("simkl_id"),
+                            "tmdb": int(item.get("ids", {}).get("tmdb", 0))
+                        }
 
         print(f"Warning: No matching Simkl ID found for {title} ({year})")
         # Track failed lookup
-        from cache import add_failed_lookup
         add_failed_lookup(title, year, category, "No matching Simkl ID found")
         return None
 
     except Exception as e:
         print(f"Error fetching Simkl ID for {title}: {e}")
         # Track failed lookup
-        from cache import add_failed_lookup
         add_failed_lookup(title, year, category, str(e))
         return None
-
-def process_item(item: TasteIOItem) -> MediaEntry:
-    """Process a single item from taste.io and convert it to Simkl format."""
-    # Determine the rating value (convert from 4-star to 10-point scale)
-    star_rating = item.get("highlightRating") or item.get("user", {}).get("rating")
-    rating_value = star_rating * 2.5
-
-    # Get the Simkl ID from their API
-    if item.get("category") == "movies":
-        category = "movie"
-    elif 'anime' in item.get("genre") or 'Animation' in item.get("genre"):
-        category = "anime"
-    else:
-        category = "tv"
-    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
-
-    return MediaEntry(
-        title=item.get("name", ""),
-        rating=rating_value,
-        year=item.get("year", ""),
-        to='completed',
-        ids=ids
-    )
 
 def fetch_items_from_api(url, cache_key):
     """Fetch all items from the given API URL with pagination."""
@@ -217,29 +198,6 @@ def fetch_items_from_api(url, cache_key):
 
     print(f"Total {cache_key} items collected:", len(all_items))
     return all_items
-
-def process_saved_item(item: TasteIOItem) -> MediaEntry:
-    """Process a single saved item from taste.io and convert it to Simkl format with 'plantowatch' status."""
-    # Get the Simkl ID from their API
-    if item.get("category") == "movies":
-        category = "movie"
-    elif 'anime' in item.get("genre", "") or 'Animation' in item.get("genre", ""):
-        category = "anime"
-    else:
-        category = "tv"
-    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
-
-    # Skip items where we couldn't find a Simkl ID
-    if not ids:
-        return None
-
-    return MediaEntry(
-        title=item.get("name", ""),
-        rating=None,  # No rating for saved items
-        year=item.get("year", ""),
-        to='plantowatch',  # Set status to plantowatch
-        ids=ids
-    )
 
 def fetch_continue_watching_items():
     """Fetch items from the continue-watching API endpoint."""
@@ -335,12 +293,58 @@ def fetch_watched_episodes(slug):
         print(f"Error fetching episode data for {slug}: {e}")
         return []
 
+def process_item(item: TasteIOItem) -> MediaEntry:
+    """Process a single item from taste.io and convert it to Simkl format."""
+    # Determine the rating value (convert from 4-star to 10-point scale)
+    star_rating = item.get("highlightRating") or item.get("user", {}).get("rating")
+    rating_value = star_rating * 2.5
+
+    # Get the Simkl ID from their API
+    if item.get("category") == "movies":
+        category = "movie"
+    elif 'anime' in item.get("genre"):
+        category = "anime"
+    else:
+        category = "tv"
+    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
+
+    return MediaEntry(
+        title=item.get("name", ""),
+        rating=rating_value,
+        year=item.get("year", ""),
+        to='completed',
+        ids=ids
+    )
+
+def process_saved_item(item: TasteIOItem) -> MediaEntry:
+    """Process a single saved item from taste.io and convert it to Simkl format with 'plantowatch' status."""
+    # Get the Simkl ID from their API
+    if item.get("category") == "movies":
+        category = "movie"
+    elif 'anime' in item.get("genre", ""):
+        category = "anime"
+    else:
+        category = "tv"
+    ids = get_ids(item.get("name", ""), item.get("year", ""), category)
+
+    # Skip items where we couldn't find a Simkl ID
+    if not ids:
+        return None
+
+    return MediaEntry(
+        title=item.get("name", ""),
+        rating=None,  # No rating for saved items
+        year=item.get("year", ""),
+        to='plantowatch',  # Set status to plantowatch
+        ids=ids
+    )
+
 def process_watching_item(item: TasteIOItem) -> MediaEntry:
     """Process a single item from continue-watching and convert it to Simkl format."""
     # Get the Simkl ID from their API
     if item.get("category") == "movies":
         category = "movie"
-    elif 'anime' in item.get("genre", "") or 'Animation' in item.get("genre", ""):
+    elif 'anime' in item.get("genre", ""):
         category = "anime"
     else:
         category = "tv"
@@ -358,6 +362,26 @@ def process_watching_item(item: TasteIOItem) -> MediaEntry:
         ids=ids
     )
 
+def extract_watched_episodes() -> list:
+    """Load watched episodes from cache if valid."""
+    episodes_cache = {}
+    cache_valid = False
+    if os.path.exists(EPISODES_CACHE_FILE):
+        with open(EPISODES_CACHE_FILE, 'r', encoding='utf-8') as f:
+            try:
+                episodes_cache = json.load(f)
+                cache_timestamp = episodes_cache.get('timestamp', 0)
+                if time.time() - cache_timestamp <= (CACHE_TIMEOUT_DAYS * 24 * 60 * 60):
+                    cache_valid = True
+            except Exception:
+                episodes_cache = {'timestamp': 0, 'items': {}}
+    else:
+        episodes_cache = {'timestamp': 0, 'items': {}}
+    if cache_valid:
+        # Return all processed episodes from cache
+        return list(episodes_cache.get('items', {}).values())
+    return []
+
 def main():
     # Initialize the backup structure
     backup = SimklBackup(movies=[], shows=[])
@@ -367,102 +391,117 @@ def main():
     failed_items = []
 
     try:
-        # Fetch rated items if enabled
         ratings_cache = set()  # Keep track of rated items to filter out duplicates
-        if SCRAPE_RATINGS:
-            print("Scraping ratings...")
-            ratings_items = fetch_items_from_api(BASE_URL, 'ratings')
+        try:
+            # Fetch rated items if enabled
+            if SCRAPE_RATINGS:
+                print("Scraping ratings...")
+                ratings_items = fetch_items_from_api(BASE_URL, 'ratings')
 
-            # Process rated items
-            for item in ratings_items:
-                entry = process_item(item)
-                # Add to ratings cache for filtering saved items later
-                if entry and entry.get("ids") and entry.get("ids").get("simkl"):
-                    ratings_cache.add(entry.get("ids").get("simkl"))
+                # Process rated items
+                for item in ratings_items:
+                    entry = process_item(item)
+                    # Add to ratings cache for filtering saved items later
+                    if entry and entry.get("ids") and entry.get("ids").get("simkl"):
+                        ratings_cache.add(entry.get("ids").get("simkl"))
 
-                if item.get("category") == "tv":
-                    backup["shows"].append(entry)
-                else:  # Default to movies for unknown categories
-                    backup["movies"].append(entry)
-        else:
-            print("Skipping ratings scraping (disabled in config)")
-
-        # Fetch saved items if enabled
-        if SCRAPE_SAVED:
-            print("Scraping saved items...")
-            saved_items = fetch_items_from_api(SAVED_URL, 'saved')
-
-            # Process saved items (filter out duplicates)
-            for item in saved_items:
-                # Skip items that are already rated
-                item_key = f"{item.get('name')}_{item.get('year')}"
-                if item_key in ratings_cache:
-                    continue
-
-                # Process the saved item
-                entry = process_saved_item(item)
-                if entry:
-                    if item.get("category") == "movies":
-                        backup["movies"].append(entry)
-                    else:
+                    if item.get("category") == "tv":
                         backup["shows"].append(entry)
-        else:
-            print("Skipping saved items scraping (disabled in config)")
-
-        # Fetch continue-watching items if enabled and TASTE_TOKEN is available
-        if SCRAPE_CONTINUE_WATCHING and TASTE_TOKEN:
-            print("Scraping continue-watching items...")
-            watching_items = fetch_continue_watching_items()
-
-            # Process continue-watching items (filter out duplicates)
-            for item in watching_items:
-                # Skip items that are already rated or saved
-                item_key = f"{item.get('name')}_{item.get('year')}"
-                if item_key in ratings_cache:
-                    continue
-
-                # Process the watching item
-                entry = process_watching_item(item)
-                if entry:
-                    if item.get("category") == "movies":
+                    else:  # Default to movies for unknown categories
                         backup["movies"].append(entry)
-                    else:
-                        # For TV shows, fetch watched episodes
-                        slug = item.get("slug")
-                        if slug:
-                            show_episodes = fetch_watched_episodes(slug)
-                            if show_episodes:
-                                # Group episodes by season
-                                seasons = {}
-                                for ep in show_episodes:
-                                    season_num = ep["season"]
-                                    if season_num not in seasons:
-                                        seasons[season_num] = []
-                                    seasons[season_num].append({"number": ep["episode"]})
+            else:
+                print("Skipping ratings scraping (disabled in config)")
 
-                                # Store watched episodes for this show
-                                watched_episodes[item_key] = {
-                                    "title": item.get("name", ""),
-                                    "year": item.get("year", ""),
-                                    "ids": entry.get("ids", {}),
-                                    "seasons": [
-                                        {"number": season, "episodes": episodes}
-                                        for season, episodes in seasons.items()
-                                    ]
-                                }
+            # Fetch saved items if enabled
+            if SCRAPE_SAVED:
+                print("Scraping saved items...")
+                saved_items = fetch_items_from_api(SAVED_URL, 'saved')
 
-                        backup["shows"].append(entry)
-        elif not SCRAPE_CONTINUE_WATCHING:
-            print("Skipping continue-watching scraping (disabled in config)")
-        elif not TASTE_TOKEN:
-            print("Skipping continue-watching scraping (TASTE_TOKEN not set)")
+                # Process saved items (filter out duplicates)
+                for item in saved_items:
+                    # Skip items that are already rated
+                    item_key = f"{item.get('name')}_{item.get('year')}"
+                    if item_key in ratings_cache:
+                        continue
+
+                    # Process the saved item
+                    entry = process_saved_item(item)
+                    if entry:
+                        if item.get("category") == "movies":
+                            backup["movies"].append(entry)
+                        else:
+                            backup["shows"].append(entry)
+            else:
+                print("Skipping saved items scraping (disabled in config)")
+
+            # Fetch continue-watching items if enabled and TASTE_TOKEN is available
+            if SCRAPE_CONTINUE_WATCHING and TASTE_TOKEN:
+                print("Scraping continue-watching items...")
+                watching_items = fetch_continue_watching_items()
+
+                # Load all cached episodes (if any)
+                episodes_cache = extract_watched_episodes()
+                all_episodes_processed = True
+                watched_episodes = {}
+
+                for item in watching_items:
+                    # Process the watching item
+                    entry = process_watching_item(item)
+                    if entry:
+                        if item.get("category") == "movies":
+                            backup["movies"].append(entry)
+                        else:
+                            # For TV shows, fetch watched episodes
+                            slug = item.get("slug")
+                            if slug:
+                                cache_key = f"episodes_{slug}"
+                                cached_eps = load_cache(cache_key)
+                                # If cache is valid and episodes exist, skip processing
+                                if cache_valid and episodes_cache.get('items', {}).get(slug):
+                                    show_episodes = episodes_cache['items'][slug]
+                                else:
+                                    show_episodes = fetch_watched_episodes(slug)
+                                    if show_episodes:
+                                        save_cache(show_episodes, cache_key)
+                                    else:
+                                        all_episodes_processed = False
+                                        continue
+                                if show_episodes:
+                                    # Group episodes by season
+                                    seasons = {}
+                                    for ep in show_episodes:
+                                        season_num = ep["season"]
+                                        if season_num not in seasons:
+                                            seasons[season_num] = []
+                                        seasons[season_num].append({"number": ep["episode"]})
+
+                                    # Store watched episodes for this show
+                                    watched_episodes[item.get('name', '') + '_' + str(item.get('year', ''))] = {
+                                        "title": item.get("name", ""),
+                                        "year": item.get("year", ""),
+                                        "ids": entry.get("ids", {}),
+                                        "seasons": [
+                                            {"number": season, "episodes": episodes}
+                                            for season, episodes in seasons.items()
+                                        ]
+                                    }
+
+                            backup["shows"].append(entry)
+                elif not SCRAPE_CONTINUE_WATCHING:
+                    print("Skipping continue-watching scraping (disabled in config)")
+                elif not TASTE_TOKEN:
+                    print("Skipping continue-watching scraping (TASTE_TOKEN not set)")
+            except SimklApiLimitException as api_limit_exc:
+                print(str(api_limit_exc))
+                print("API limit reached, skipping the rest of the scraping steps.")
+                all_episodes_processed = False
 
         # Save the backup to a file
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(backup, f, ensure_ascii=False, indent=JSON_INDENT)
 
-        # Save watched episodes to a separate file for the importer
-        if watched_episodes:
+        # Save watched episodes to a separate file for the importer only if all processed
+        if watched_episodes and all_episodes_processed:
             with open("watched_episodes.json", 'w', encoding='utf-8') as f:
                 json.dump(list(watched_episodes.values()), f, ensure_ascii=False, indent=JSON_INDENT)
 
@@ -473,13 +512,12 @@ def main():
             print(f"Watched episodes data saved to watched_episodes.json")
 
         # Display failed lookups if any
-        from cache import get_failed_lookups
         failed_lookups = get_failed_lookups()
         if failed_lookups:
             print("\n===== FAILED SIMKL ID LOOKUPS =====")
             print("The following items could not be found in Simkl and may need to be manually imported:")
             for i, item in enumerate(failed_lookups, 1):
-                print(f"{i}. {item['title']} ({item['year']}) - {item['category']} - {item['error']}")
+                print(f"{i}. {item['title']} ({item['year']}) - {item['category']}")
             print("\nPlease consider manually importing these items into Simkl.")
 
     except Exception as e:

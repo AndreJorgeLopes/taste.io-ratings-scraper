@@ -224,7 +224,7 @@ def send_watched_episodes_to_simkl() -> None:
 
     # Check if watched episodes file exists
     if not os.path.exists("watched_episodes.json"):
-        print("No watched episodes data found.")
+        print("No watched episodes data found. Remember if the Scraper.py script didn't create the 'watched_episodes.json' file,\n you need to run the Scraper.py script first/again. \nBecause it didn't manage to get all the episodes, probably because of the rate limit of Simkl.")
         return
 
     # Load watched episodes data
@@ -243,7 +243,7 @@ def send_watched_episodes_to_simkl() -> None:
     valid_shows = [show for show in watched_episodes if show.get("seasons")]
 
     if not valid_shows:
-        print("No valid shows with episodes found.")
+        print("No valid shows with episodes found in the 'watched_episodes.json' file.")
         return
 
     # Create the payload with all shows in a single request

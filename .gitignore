@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Python Virtual Environment
+.python-version
+
 # Virtual Environment
 venv/
 env/
@@ -15,7 +18,7 @@ env/
 .idea/
 
 # Project specific
-ratings_cache*.json
+cache*.json
 watched_episodes.json
 failed_lookups.json
 SimklBackup.json

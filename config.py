@@ -81,8 +81,13 @@ COOKIE_DEFAULTS = {
 MIN_DELAY = float(os.getenv("MIN_DELAY", 1.5))
 MAX_DELAY = float(os.getenv("MAX_DELAY", 4.0))
 
+# Helper function to parse boolean environment variables robustly
+def get_bool_env(var_name, default="true"):
+    val = os.getenv(var_name, default)
+    return str(val).strip().lower() in ("1", "true", "yes", "on")
+
 # Browser settings
-HEADLESS_MODE = os.getenv("HEADLESS_MODE", "true").lower() == "true"
+HEADLESS_MODE = get_bool_env("HEADLESS_MODE", "true")
 PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", 30))
 
 # Output settings
@@ -90,10 +95,10 @@ OUTPUT_FILE = os.getenv("OUTPUT_FILE", "SimklBackup.json")
 JSON_INDENT = 2
 
 # Cache settings
-CACHE_FILE = os.getenv("CACHE_FILE", "ratings_cache.json")
+CACHE_FILE = os.getenv("CACHE_FILE", "cache.json")
 CACHE_TIMEOUT_DAYS = int(os.getenv("CACHE_TIMEOUT_DAYS", 1))
 
 # Feature toggles (all enabled by default)
-SCRAPE_RATINGS = os.getenv("SCRAPE_RATINGS", "true").lower() == "true"
-SCRAPE_SAVED = os.getenv("SCRAPE_SAVED", "true").lower() == "true"
-SCRAPE_CONTINUE_WATCHING = os.getenv("SCRAPE_CONTINUE_WATCHING", "true").lower() == "true"
+SCRAPE_RATINGS = get_bool_env("SCRAPE_RATINGS", "true")
+SCRAPE_SAVED = get_bool_env("SCRAPE_SAVED", "true")
+SCRAPE_CONTINUE_WATCHING = get_bool_env("SCRAPE_CONTINUE_WATCHING", "true")
