@@ -517,7 +517,7 @@ def main():
             print("\n===== FAILED SIMKL ID LOOKUPS =====")
             print("The following items could not be found in Simkl and may need to be manually imported:")
             for i, item in enumerate(failed_lookups, 1):
-                print(f"{i}. {item['title']} ({item['year']}) - {item['category']}")
+                print(f"{i}. [{item['year']}][{item['category']}] '{item['title']}'")
             print("\nPlease consider manually importing these items into Simkl.")
 
     except Exception as e:
